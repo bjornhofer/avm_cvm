@@ -18,6 +18,16 @@ variable "os" {
   default = "windows"
 }
 
+variable "public_key" {
+  type = string
+  default = null
+}
+
+variable "windows_password" {
+  type = string
+  default = null
+}
+
 // Nameing stuff - for fast recreation...
 locals {
     base = var.name_base != null ? var.name_base : "cvm"

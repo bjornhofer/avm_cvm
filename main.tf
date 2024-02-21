@@ -35,17 +35,17 @@ resource "tls_self_signed_cert" "attestation" {
 }
 
 // need to review ignore_changes part, why this is happening
-resource "azurerm_attestation_provider" "ap01" {
+resource "azurerm_attestation_provider" "ap" {
   location                  = azurerm_resource_group.rg.location
   name                      = "aap${local.name}"
   resource_group_name       = azurerm_resource_group.rg.name
   policy_signing_certificate_data = tls_self_signed_cert.attestation.cert_pem
   lifecycle {
    ignore_changes = [
-     "open_enclave_policy_base64",
-     "sgx_enclave_policy_base64",
-     "tpm_policy_base64",
-     "sev_snp_policy_base64"
+     open_enclave_policy_base64,
+     sgx_enclave_policy_base64,
+     tpm_policy_base64,
+     sev_snp_policy_base64
    ]
   }
 }
@@ -53,7 +53,7 @@ resource "azurerm_attestation_provider" "ap01" {
 # KeyVault
 data "azurerm_client_config" "current" {}
 
-resource "azurerm_key_vault" "kv01" {
+resource "azurerm_key_vault" "kv" {
   enable_rbac_authorization       = true
   enabled_for_deployment          = false
   enabled_for_disk_encryption     = true
@@ -70,28 +70,31 @@ resource "azurerm_key_vault" "kv01" {
   ]
 }
 
-resource "azurerm_key_vault_key" "key01" {
+resource "azurerm_key_vault_key" "key" {
   key_opts     = ["sign", "verify", "wrapKey", "unwrapKey", "encrypt", "decrypt"]
   key_size     = 2048
   key_type     = "RSA-HSM"
-  key_vault_id = azurerm_key_vault.kv01.id
+  key_vault_id = azurerm_key_vault.kv.id
   name         = "key-${local.name}"
   depends_on = [
-    azurerm_key_vault.kv01,
+    azurerm_key_vault.kv,
     azurerm_role_assignment.current
   ]
 }
 
 # Service principal
-resource "azuread_service_principal" "sp01" {
+// Temporary disabled
+/*
+resource "azuread_service_principal" "sp" {
   application_id = "bf7b6499-ff71-4aa2-97a4-f372087be7f0"
 }
+*/
 
 # Assign permissions
 
-resource "azurerm_disk_encryption_set" "des01" {
+resource "azurerm_disk_encryption_set" "des" {
   encryption_type = "ConfidentialVmEncryptedWithCustomerKey"
-  key_vault_key_id = azurerm_key_vault_key.key01.id
+  key_vault_key_id = azurerm_key_vault_key.key.id
   location = azurerm_resource_group.rg.location
   name = "des-${local.name}"
   resource_group_name = azurerm_resource_group.rg.name
@@ -99,29 +102,29 @@ resource "azurerm_disk_encryption_set" "des01" {
     type = "SystemAssigned"
   }
   depends_on = [
-    azurerm_key_vault.kv01,
-    azurerm_key_vault_key.key01
+    azurerm_key_vault.kv,
+    azurerm_key_vault_key.key
   ]
 }
 
 // Permissions for DES
 # We do not use KeyVault policiese -> RBAC
 resource "azurerm_role_assignment" "current" {
-  scope                = azurerm_key_vault.kv01.id
+  scope                = azurerm_key_vault.kv.id
   role_definition_name = "Key Vault Administrator"
   principal_id         = data.azurerm_client_config.current.object_id
 }
 
 // Add role for DES - according to documentation -> https://registry.terraform.io/providers/hashicorp/azurerm/3.92.0/docs/resources/disk_encryption_set
-resource "azurerm_role_assignment" "des01" {
-  scope                = azurerm_key_vault.kv01.id
+resource "azurerm_role_assignment" "des" {
+  scope                = azurerm_key_vault.kv.id
   role_definition_name = "Key Vault Crypto Service Encryption User"
-  principal_id         = azurerm_disk_encryption_set.des01.identity.0.principal_id
+  principal_id         = azurerm_disk_encryption_set.des.identity.0.principal_id
 }
 
 // VM relevant stuff
 # NIC
-resource "azurerm_network_interface" "nic01" {
+resource "azurerm_network_interface" "nic" {
   name                = "nic-${local.name}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
@@ -133,7 +136,8 @@ resource "azurerm_network_interface" "nic01" {
   }
 }
 
-resource "azurerm_linux_virtual_machine" "cvm01" {
+resource "azurerm_linux_virtual_machine" "cvm" {
+  count              = var.os == "linux" ? 1 : 0
   name                = "vm-${local.name}"
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
@@ -150,39 +154,81 @@ resource "azurerm_linux_virtual_machine" "cvm01" {
 
   admin_username      = "azuser"
   network_interface_ids = [
-    azurerm_network_interface.nic01.id,
+    azurerm_network_interface.nic.id,
   ]
 
   admin_ssh_key {
     username   = "azuser"
-    public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC9Hz0qU6F7q0EUQS193YfAgBHm6tIFpIwKneo5cx/z5j2vGE9eMFNgHiXO492GDkyq9llAVjXlViLq78nfIRnI5Jsih/qKUfr4t5lolcLUTxOFsOsLWtOUhytYI8qs5uFulLr3169fMUmmBrVwcP22zeAkiK7cDdIxQrahbmL14MKxlAbSuAmCyFGyu/SZttV3dxBnxJMDAvumRygMAHG/w4cS5jHQ2Lay07mGu2ejuMra/sQcOeYUG2CEqmUKpqWsN4vuWna66jt0Or74v5VBGk9joW2A1jDCQ/DPwuKSr83dk2tx7XfLCLh8KtMMqj4loKg8KIejlSpROoWjp1Yj MSDN Default"
+    public_key = var.public_key
   }
 
   os_disk {
     caching              = "ReadWrite"
     storage_account_type = "StandardSSD_LRS"
     //CVM
-    secure_vm_disk_encryption_set_id = azurerm_disk_encryption_set.des01.id
+    secure_vm_disk_encryption_set_id = azurerm_disk_encryption_set.des.id
     security_encryption_type = "DiskWithVMGuestState"
   }
 
   // CVM
   source_image_reference {
     publisher = "Canonical"
-    offer     = "0001-com-ubuntu-confidential-vm-focal"
-    sku       = "20_04-lts-cvm"
+    offer     = "0001-com-ubuntu-confidential-vm-jammy"
+    sku       = "22_04-lts-cvm"
     version   = "latest"
   }
   depends_on = [ 
-    azurerm_network_interface.nic01,
-    azurerm_role_assignment.des01
+    azurerm_network_interface.nic,
+    azurerm_role_assignment.des
   ]
 }
 
-/*
-resource "azurerm_virtual_machine_extension" "cvm01" {
+resource "azurerm_windows_virtual_machine" "cvm" {
+  count              = var.os == "windows" ? 1 : 0
+  name                = "vm-${local.name}"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+  size                = "Standard_DC2ads_v5"
+  // CVM
+  secure_boot_enabled = true
+  vtpm_enabled = true
+  // Cannot be true according to documentation - https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/windows_virtual_machine#security_encryption_type
+  encryption_at_host_enabled = false
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  network_interface_ids = [
+    azurerm_network_interface.nic.id,
+  ]
+
+  admin_username      = "azuser"
+  admin_password = var.windows_password
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "StandardSSD_LRS"
+    //CVM
+    secure_vm_disk_encryption_set_id = azurerm_disk_encryption_set.des.id
+    security_encryption_type = "DiskWithVMGuestState"
+  }
+
+  // CVM
+  source_image_reference {
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = "2019-datacenter-smalldisk-g2"
+    version   = "latest"
+  }
+  depends_on = [ 
+    azurerm_network_interface.nic,
+    azurerm_role_assignment.des
+  ]
+}
+
+resource "azurerm_virtual_machine_extension" "cvm" {
   name                 = "GuestAttestation"
-  virtual_machine_id   = azurerm_linux_virtual_machine.cvm01.id
+  virtual_machine_id   = azurerm_windows_virtual_machine.cvm[0].id
   publisher            = "Microsoft.Azure.Security.WindowsAttestation"
   type                 = "GuestAttestation"
   type_handler_version = "1.0"
@@ -190,8 +236,7 @@ resource "azurerm_virtual_machine_extension" "cvm01" {
   settings = <<SETTINGS
       {
         "attestationMode": "Attestation",
-        "attestationUrl": "${azurerm_attestation_provider.ap01.attestation_uri}"
+        "attestationUrl": "${azurerm_attestation_provider.ap.attestation_uri}"
       }
     SETTINGS
 }
-*/

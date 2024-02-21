@@ -1,0 +1,13 @@
+**/.terraform/*
+**/.terragrunt*/*
+**/.terraform.lock*
+**/test/*
+terraform.tfvars.ignore
+terraform.tfvars
+testenvironment.tf.ignore
+testenvironment.tf
+id_rsa.pub
+project.yml
+settings.yml
+terraform.tfstate*
+.terraform.tfstate.lock.info
