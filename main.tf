@@ -226,6 +226,8 @@ resource "azurerm_windows_virtual_machine" "cvm" {
   ]
 }
 
+# Non functional - deactived
+/*
 resource "azurerm_virtual_machine_extension" "cvm" {
   name                 = "GuestAttestation"
   virtual_machine_id   = azurerm_windows_virtual_machine.cvm[0].id
@@ -240,3 +242,4 @@ resource "azurerm_virtual_machine_extension" "cvm" {
       }
     SETTINGS
 }
+*/
