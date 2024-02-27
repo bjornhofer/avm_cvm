@@ -149,7 +149,7 @@ resource "azurerm_key_vault_access_policy" "current" {
 
 // Get information about the key
 data "azurerm_key_vault_key" "des" {
-  name         = "key-${local.name}"
+  name         = "key-${local.name}-${random_integer.random.result}"
   key_vault_id = azurerm_key_vault.kv.id
   depends_on = [
     azurerm_key_vault_access_policy.current,
