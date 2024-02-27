@@ -148,7 +148,7 @@ resource "azurerm_key_vault_access_policy" "current" {
 data "azurerm_key_vault_key" "des" {
   name         = "key-${local.name}"
   key_vault_id = azurerm_key_vault.kv.id
-  depends_on   = [
+  depends_on = [
     azurerm_key_vault_access_policy.current,
     azurerm_resource_group_template_deployment.cvm_deployment
   ]
@@ -190,6 +190,9 @@ resource "azurerm_network_interface" "nic" {
     subnet_id                     = azurerm_subnet.subnet.id
     private_ip_address_allocation = "Dynamic"
   }
+  depends_on = [
+    azurerm_subnet.subnet
+  ]
 }
 
 resource "azurerm_linux_virtual_machine" "cvm" {
@@ -197,7 +200,7 @@ resource "azurerm_linux_virtual_machine" "cvm" {
   name                = "vm-${local.name}"
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
-  size                = "Standard_DC2ads_v5"
+  size                = var.vm_size
   // CVM
   secure_boot_enabled = true
   vtpm_enabled        = true
@@ -244,7 +247,7 @@ resource "azurerm_windows_virtual_machine" "cvm" {
   name                = "vm-${local.name}"
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
-  size                = "Standard_DC2ads_v5"
+  size                = var.vm_size
   // CVM
   secure_boot_enabled = true
   vtpm_enabled        = true

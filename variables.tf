@@ -28,6 +28,11 @@ variable "windows_password" {
   default = null
 }
 
+variable "vm_size" {
+  type    = string
+  default = "Standard_DC2ads_v5"
+}
+
 // Nameing stuff - for fast recreation...
 resource "random_integer" "random" {
   min = 1
