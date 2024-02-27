@@ -35,9 +35,6 @@ resource "azurerm_key_vault" "kv" {
   sku_name                        = "premium"
   soft_delete_retention_days      = 7
   tenant_id                       = data.azurerm_client_config.current.tenant_id
-  depends_on = [
-    azurerm_resource_group.rg
-  ]
 }
 
 data "http" "exportpolicy" {
@@ -68,7 +65,7 @@ resource "azapi_resource" "key_vault_key" {
         exportable = true
       },
       release_policy = {
-        data : base64encode(data.http.exportpolicy.body)
+        data : base64encode(data.http.exportpolicy.response_body)
       }
     }
   })
@@ -81,11 +78,16 @@ resource "azapi_resource" "key_vault_key" {
 // Option 2: azurerm_resource_group_template_deployment - https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/resource_group_template_deployment
 // Downside: More complex
 
+
+
 resource "azurerm_resource_group_template_deployment" "cvm_deployment" {
-  name                = "cvm_key_deployment"
+  name                = "${azurerm_key_vault.kv.name}-key-${local.name}-${random_integer.random.result}"
   resource_group_name = azurerm_resource_group.rg.name
-  deployment_mode     = "Incremental"
-  template_content    = <<TEMPLATE
+  depends_on = [
+    azurerm_key_vault.kv
+  ]
+  deployment_mode  = "Incremental"
+  template_content = <<TEMPLATE
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
@@ -93,7 +95,7 @@ resource "azurerm_resource_group_template_deployment" "cvm_deployment" {
     {
       "type": "Microsoft.KeyVault/vaults/keys",
       "apiVersion": "2023-07-01",
-      "name": "${azurerm_key_vault.kv.name}/key-${local.name}",
+      "name": "${azurerm_key_vault.kv.name}/key-${local.name}-${random_integer.random.result}",
       "properties": {
         "kty": "RSA-HSM",
         "keySize": 3072,
@@ -109,7 +111,7 @@ resource "azurerm_resource_group_template_deployment" "cvm_deployment" {
             "exportable" : true
         },
         "release_policy" : {
-            "data" : "${base64encode(data.http.exportpolicy.body)}"
+            "data" : "${base64encode(data.http.exportpolicy.response_body)}"
         }
       }
     }
@@ -119,9 +121,10 @@ TEMPLATE
 }
 
 
+
 # Assign permissions
 data "azuread_service_principal" "cvm_orchestrator" {
-  application_id = "bf7b6499-ff71-4aa2-97a4-f372087be7f0"
+  client_id = "bf7b6499-ff71-4aa2-97a4-f372087be7f0"
 }
 
 resource "azurerm_key_vault_access_policy" "cvm_orchestrator" {
@@ -222,6 +225,7 @@ resource "azurerm_linux_virtual_machine" "cvm" {
   }
 
   os_disk {
+    name                 = "os-${local.name}"
     caching              = "ReadWrite"
     storage_account_type = "StandardSSD_LRS"
     //CVM
